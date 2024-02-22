@@ -1,10 +1,6 @@
 const std = @import("std");
 const print = std.debug.print;
 
-const json_input = @embedFile("./test.json");
-const conjure_json_input = @embedFile("./conjure.json");
-const learnts_input = @embedFile("./test.learnts");
-
 pub const log_level: std.log.Level = .debug;
 
 // -- Lexing --
@@ -254,7 +250,7 @@ const ParseError = error{
 };
 
 const ASTNode_Program = struct {
-    nogood: []const ASTNode_Nogood,
+    nogood: []const *ASTNode_Nogood,
 
     fn print(self: ASTNode_Program) void {
         std.debug.print("Program:\n", .{});
@@ -265,7 +261,7 @@ const ASTNode_Program = struct {
 };
 
 const ASTNode_Nogood = struct {
-    set_expr: []const ASTNode_SetExpr,
+    set_expr: []const *ASTNode_SetExpr,
 
     fn print(self: ASTNode_Nogood, indent: u32) void {
         printIndent(indent);
@@ -294,9 +290,12 @@ const ASTNode_Nogood = struct {
             return null;
         };
 
-        var set_expr_list = std.ArrayList(ASTNode_SetExpr).init(options.allocator);
+        var set_expr_list = std.ArrayList(*ASTNode_SetExpr).init(options.allocator);
 
-        try set_expr_list.append(result.node);
+        const set_expr = try options.allocator.create(ASTNode_SetExpr);
+        set_expr.* = result.node;
+
+        try set_expr_list.append(set_expr);
         current_position += result.advance;
 
         while (checkTokenTag(tokens[position], .OR)) {
@@ -311,7 +310,10 @@ const ASTNode_Nogood = struct {
                 return ParseError.ExpectedExpression;
             };
 
-            try set_expr_list.append(next_result.node);
+            const _set_expr = try options.allocator.create(ASTNode_SetExpr);
+            _set_expr.* = next_result.node;
+
+            try set_expr_list.append(_set_expr);
             current_position += next_result.advance;
         }
 
@@ -325,8 +327,8 @@ const ASTNode_Nogood = struct {
 };
 
 const ASTNode_SetExpr = struct {
-    expr: ASTNode_EqualityExpr,
-    args: ?[]const ASTNode_Numeric,
+    expr: *ASTNode_EqualityExpr,
+    args: ?[]const *ASTNode_Numeric,
 
     fn print(self: ASTNode_SetExpr, indent: u32) void {
         printIndent(indent);
@@ -363,12 +365,12 @@ const ASTNode_SetExpr = struct {
         };
         current_position += equality_result.advance;
 
-        var args_list: ?std.ArrayList(ASTNode_Numeric) = null;
+        var args_list: ?std.ArrayList(*ASTNode_Numeric) = null;
 
         if (isNextTokenOneOfTypes(&.{.IN}, tokens, current_position)) {
             current_position += 1;
 
-            args_list = std.ArrayList(ASTNode_Numeric).init(options.allocator);
+            args_list = std.ArrayList(*ASTNode_Numeric).init(options.allocator);
 
             if (!checkTokenTag(tokens[current_position], .INT)) {
                 options.diags.error_token = tokens[current_position];
@@ -394,7 +396,9 @@ const ASTNode_SetExpr = struct {
 
                 if (try ASTNode_Numeric.parse(options, tokens, current_position)) |result| {
                     current_position += result.advance;
-                    try args_list.?.append(result.node);
+                    const numeric_expr = try options.allocator.create(ASTNode_Numeric);
+                    numeric_expr.* = result.node;
+                    try args_list.?.append(numeric_expr);
                 } else {
                     options.diags.error_token = tokens[current_position];
                     options.diags.error_expected = "numeric argument";
@@ -410,10 +414,13 @@ const ASTNode_SetExpr = struct {
             current_position += 1;
         }
 
+        const equality_expr = try options.allocator.create(ASTNode_EqualityExpr);
+        equality_expr.* = equality_result.node;
+
         return ParseResult(ASTNode_SetExpr){
             .advance = current_position - position,
             .node = .{
-                .expr = equality_result.node,
+                .expr = equality_expr,
                 .args = if (args_list != null)
                     try args_list.?.toOwnedSlice()
                 else
@@ -426,7 +433,7 @@ const ASTNode_SetExpr = struct {
 fn OpItem(comptime ExprNode: type) type {
     return struct {
         op: TokenType,
-        expr: ExprNode,
+        expr: *ExprNode,
     };
 }
 
@@ -436,7 +443,7 @@ fn BinaryOpNode(
     comptime ops: []const TokenType,
 ) type {
     return struct {
-        expr: SubExprNode,
+        expr: *SubExprNode,
         ops: []OpItem(SubExprNode),
 
         const Self = @This();
@@ -493,13 +500,19 @@ fn BinaryOpNode(
                 };
                 current_position += _expr_result.advance;
 
-                try ops_list.append(.{ .op = op, .expr = _expr_result.node });
+                const _expr = try options.allocator.create(SubExprNode);
+                _expr.* = _expr_result.node;
+
+                try ops_list.append(.{ .op = op, .expr = _expr });
             }
+
+            const expr = try options.allocator.create(SubExprNode);
+            expr.* = expr_result.node;
 
             return ParseResult(Self){
                 .advance = current_position - position,
                 .node = .{
-                    .expr = expr_result.node,
+                    .expr = expr,
                     .ops = try ops_list.toOwnedSlice(),
                 },
             };
@@ -523,18 +536,95 @@ const ASTNode_TermExpr = BinaryOpNode(
     &.{ .PLUS, .MINUS },
 );
 const ASTNode_FactorExpr = BinaryOpNode(
-    ASTNode_AtomExpr,
+    ASTNode_UnaryExpr,
     "FactorExpr",
     &.{ .MULT, .DIV, .MOD },
 );
 
+const UnaryType = enum { atom, unary };
+
+const ASTNode_UnaryExpr = union(UnaryType) {
+    atom: *ASTNode_AtomExpr,
+    unary: struct {
+        op: TokenType,
+        expr: *ASTNode_UnaryExpr,
+    },
+
+    fn print(self: ASTNode_UnaryExpr, indent: u32) void {
+        printIndent(indent);
+        std.debug.print("UnaryExpr:\n", .{});
+
+        switch (self) {
+            .atom => |node| node.print(indent + 1),
+            .unary => |node| {
+                printIndent(indent + 1);
+                std.debug.print("op: {}\n", .{node.op});
+                node.expr.print(indent + 1);
+            },
+        }
+    }
+
+    fn parse(
+        options: ParseOptions,
+        tokens: []const Token,
+        position: usize,
+    ) ParseError!?ParseResult(ASTNode_UnaryExpr) {
+        var current_position = position;
+        if (isNextTokenOneOfTypes(&.{ .NOT, .MINUS }, tokens, current_position)) {
+            const op: TokenType = tokens[current_position].tag;
+            current_position += 1;
+            const result = try ASTNode_UnaryExpr.parse(
+                options,
+                tokens,
+                current_position,
+            ) orelse {
+                options.diags.error_token = tokens[current_position];
+                return ParseError.ExpectedExpression;
+            };
+            current_position += result.advance;
+
+            const expr = try options.allocator.create(ASTNode_UnaryExpr);
+            expr.* = result.node;
+
+            return ParseResult(ASTNode_UnaryExpr){
+                .advance = current_position - position,
+                .node = .{
+                    .unary = .{
+                        .op = op,
+                        .expr = expr,
+                    },
+                },
+            };
+        }
+
+        if (try ASTNode_AtomExpr.parse(
+            options,
+            tokens,
+            current_position,
+        )) |result| {
+            current_position += result.advance;
+            const expr = try options.allocator.create(ASTNode_AtomExpr);
+            expr.* = result.node;
+
+            return ParseResult(ASTNode_UnaryExpr){
+                .advance = current_position - position,
+                .node = .{
+                    .atom = expr,
+                },
+            };
+        }
+
+        return null;
+    }
+};
+
 const AtomType = enum { id, true, false, numeric, expr };
 
 const ASTNode_AtomExpr = union(AtomType) {
-    id: ASTNode_Identifier,
+    id: *ASTNode_Identifier,
     true: void,
     false: void,
-    numeric: ASTNode_Numeric,
+    numeric: *ASTNode_Numeric,
     expr: *ASTNode_SetExpr,
 
     fn print(self: ASTNode_AtomExpr, indent: u32) void {
@@ -569,10 +659,14 @@ const ASTNode_AtomExpr = union(AtomType) {
         var current_position = position;
         if (try ASTNode_Identifier.parse(options, tokens, current_position)) |result| {
             current_position += result.advance;
+
+            const expr = try options.allocator.create(ASTNode_Identifier);
+            expr.* = result.node;
+
             return ParseResult(ASTNode_AtomExpr){
                 .advance = current_position - position,
                 .node = .{
-                    .id = result.node,
+                    .id = expr,
                 },
             };
         }
@@ -596,10 +690,14 @@ const ASTNode_AtomExpr = union(AtomType) {
         }
         if (try ASTNode_Numeric.parse(options, tokens, current_position)) |result| {
             current_position += result.advance;
+
+            const expr = try options.allocator.create(ASTNode_Numeric);
+            expr.* = result.node;
+
             return ParseResult(ASTNode_AtomExpr){
                 .advance = current_position - position,
                 .node = .{
-                    .numeric = result.node,
+                    .numeric = expr,
                 },
             };
         }
@@ -789,23 +887,29 @@ inline fn checkTokenTag(token: Token, tag: TokenType) bool {
     return token.tag == tag;
 }
 
-fn parse(options: ParseOptions, tokens: []const Token) !ASTNode_Program {
-    var nogood_list = std.ArrayList(ASTNode_Nogood).init(options.allocator);
+fn parse(options: ParseOptions, tokens: []const Token) !*ASTNode_Program {
+    var nogood_list = std.ArrayList(*ASTNode_Nogood).init(options.allocator);
     var position: usize = 0;
 
     while (try ASTNode_Nogood.parse(options, tokens, position)) |result| {
         position += result.advance;
 
-        try nogood_list.append(result.node);
+        var expr = try options.allocator.create(ASTNode_Nogood);
+        expr.* = result.node;
+
+        try nogood_list.append(expr);
     }
 
     if (position != tokens.len) {
         return ParseError.UnexpectedEOF;
     }
 
-    return .{
+    var program = try options.allocator.create(ASTNode_Program);
+    program.* = .{
         .nogood = try nogood_list.toOwnedSlice(),
     };
+
+    return program;
 }
 
 // --- Translation ---
@@ -826,7 +930,7 @@ fn parseDomainType(string: []const u8) DomainType {
 
 fn convertProgram(
     allocator: std.mem.Allocator,
-    program: ASTNode_Program,
+    program: *ASTNode_Program,
 ) ![]const u8 {
     var ret = try allocator.alloc(u8, 0);
     for (program.nogood) |nogood| {
@@ -848,7 +952,7 @@ fn convertProgram(
 
 fn convertNogood(
     allocator: std.mem.Allocator,
-    nogood: ASTNode_Nogood,
+    nogood: *ASTNode_Nogood,
 ) !?[]const u8 {
     if (nogood.set_expr.len == 0) {
         return null;
@@ -873,7 +977,7 @@ fn convertNogood(
 
 fn convertSetExpr(
     allocator: std.mem.Allocator,
-    set_expr: ASTNode_SetExpr,
+    set_expr: *ASTNode_SetExpr,
 ) anyerror![]const u8 {
     var ret = try convertExpr(allocator, ASTNode_EqualityExpr, set_expr.expr);
 
@@ -928,9 +1032,9 @@ fn convertSetExpr(
 
 fn convertNumeric(
     allocator: std.mem.Allocator,
-    numeric: ASTNode_Numeric,
+    numeric: *ASTNode_Numeric,
 ) ![]const u8 {
-    switch (numeric) {
+    switch (numeric.*) {
         .number => |n| {
             return std.fmt.allocPrint(allocator, "{}", .{n});
         },
@@ -943,10 +1047,10 @@ fn convertNumeric(
 fn convertExpr(
     allocator: std.mem.Allocator,
     comptime ExprType: type,
-    expr: ExprType,
+    expr: *ExprType,
 ) ![]const u8 {
-    var ret: []const u8 = try (if (ExprType.SubExpr == ASTNode_AtomExpr)
-        convertAtom(allocator, expr.expr)
+    var ret: []const u8 = try (if (ExprType.SubExpr == ASTNode_UnaryExpr)
+        convertUnary(allocator, expr.expr)
     else
         convertExpr(allocator, ExprType.SubExpr, expr.expr));
 
@@ -966,8 +1070,8 @@ fn convertExpr(
             else => @panic("Unrecongnized operation!"),
         };
 
-        const expr_str: []const u8 = try (if (ExprType.SubExpr == ASTNode_AtomExpr)
-            convertAtom(allocator, op.expr)
+        const expr_str: []const u8 = try (if (ExprType.SubExpr == ASTNode_UnaryExpr)
+            convertUnary(allocator, op.expr)
         else
             convertExpr(allocator, ExprType.SubExpr, op.expr));
         const new_ret = try std.mem.concat(
@@ -984,16 +1088,36 @@ fn convertExpr(
     return ret;
 }
 
+fn convertUnary(
+    allocator: std.mem.Allocator,
+    unary: *ASTNode_UnaryExpr,
+) ![]const u8 {
+    return switch (unary.*) {
+        .atom => |atom| convertAtom(allocator, atom),
+        .unary => |u| s: {
+            const unary_str = try convertUnary(allocator, u.expr);
+            defer allocator.free(unary_str);
+
+            var op_str = "!";
+            if (u.op == .MINUS) {
+                op_str = "-";
+            }
+
+            break :s std.fmt.allocPrint(allocator, "{s}{s}", .{ op_str, unary_str });
+        },
+    };
+}
+
 fn convertAtom(
     allocator: std.mem.Allocator,
-    atom: ASTNode_AtomExpr,
+    atom: *ASTNode_AtomExpr,
 ) ![]const u8 {
-    return switch (atom) {
+    return switch (atom.*) {
         .true => try std.fmt.allocPrint(allocator, "true", .{}),
         .false => try std.fmt.allocPrint(allocator, "false", .{}),
         .numeric => |node| try convertNumeric(allocator, node),
         .expr => |node| s: {
-            const expr_str = try convertSetExpr(allocator, node.*);
+            const expr_str = try convertSetExpr(allocator, node);
             defer allocator.free(expr_str);
 
             break :s std.fmt.allocPrint(allocator, "({s})", .{expr_str});
@@ -1125,12 +1249,125 @@ pub fn parseAndConvert(
     );
 }
 
+const ArgumentsStruct = struct {
+    encodings_file: ?[]const u8 = null,
+    conjure_json_file: ?[]const u8 = null,
+    learnts_file: ?[]const u8 = null,
+    output_file: ?[]const u8 = null,
+};
+
+const usageMessage: []const u8 = "Usage: process-nogoods -e <encodings-file> -c <conjure-json-file> -l <learnts-file> [-o <output-file>]\n";
+inline fn streql(s1: []const u8, s2: []const u8) bool {
+    return std.mem.eql(u8, s1, s2);
+}
+
+fn parseArguments(
+    allocator: std.mem.Allocator,
+    args: *std.process.ArgIterator,
+) !ArgumentsStruct {
+    var ret: ArgumentsStruct = .{};
+
+    while (args.next()) |arg| {
+        if (streql(arg, "--encodings") or streql(arg, "-e")) {
+            ret.encodings_file = args.next() orelse {
+                print("{s}process-nogoods: Error: argument -e/--encodings requires a value\n", .{usageMessage});
+                std.os.exit(1);
+            };
+        } else if (streql(arg, "--conjure-json") or streql(arg, "-c")) {
+            ret.conjure_json_file = args.next() orelse {
+                print("{s}process-nogoods: Error: argument -c/--conjure-json requires a value\n", .{usageMessage});
+                std.os.exit(1);
+            };
+        } else if (streql(arg, "--learnts") or streql(arg, "-l")) {
+            ret.learnts_file = args.next() orelse {
+                print("{s}process-nogoods: Error: argument -l/--learnts requires a value\n", .{usageMessage});
+                std.os.exit(1);
+            };
+        } else if (streql(arg, "--output") or streql(arg, "-o")) {
+            ret.output_file = args.next() orelse {
+                print("{s}process-nogoods: Error: argument -o/--output requires a value\n", .{usageMessage});
+                std.os.exit(1);
+            };
+        }
+    }
+
+    var missing_args = std.ArrayList([]const u8).init(allocator);
+    defer missing_args.deinit();
+    if (ret.encodings_file == null) {
+        try missing_args.append("-e/--encodings");
+    }
+    if (ret.conjure_json_file == null) {
+        try missing_args.append("-c/--conjure-json");
+    }
+    if (ret.learnts_file == null) {
+        try missing_args.append("-l/--learnts");
+    }
+    if (ret.output_file == null) {
+        ret.output_file = "output.eprime";
+    }
+
+    if (missing_args.items.len > 0) {
+        var errMessage: []const u8 = "process-nogoods: Error: the following arguments are required: ";
+        var missing_args_str = try std.mem.join(
+            allocator,
+            ", ",
+            missing_args.items,
+        );
+        defer allocator.free(missing_args_str);
+
+        print("{s}{s}{s}\n", .{ usageMessage, errMessage, missing_args_str });
+        std.os.exit(1);
+    }
+
+    return ret;
+}
+
+fn readFileIntoMemory(
+    allocator: std.mem.Allocator,
+    filename: []const u8,
+) ![]const u8 {
+    const file = try std.fs.cwd().openFile(filename, .{});
+    const file_stat = try file.stat();
+
+    var buf: []u8 = try allocator.alloc(u8, file_stat.size);
+    _ = try file.readAll(buf);
+    return buf;
+}
+
 pub fn main() !void {
     // Global Arena
     var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
     defer arena.deinit();
 
     const allocator = arena.allocator();
+
+    // Argument Parsing
+    var args = std.process.args();
+    _ = args.next().?; // Skip the program name
+
+    const arguments = try parseArguments(allocator, &args);
+
+    const json_input = try readFileIntoMemory(allocator, arguments.encodings_file.?);
+    var eprime_file = try readFileIntoMemory(allocator, arguments.conjure_json_file.?);
+    const learnts_input = try readFileIntoMemory(allocator, arguments.learnts_file.?);
+
+    const conjure_json_input = in: {
+        var split = std.mem.splitSequence(u8, eprime_file, "$ Conjure's");
+        _ = split.next(); // Skipping the Essence Prime
+        const conjure_json_dirty = split.next() orelse {
+            @panic("Failed to get conjure JSON!");
+        };
+        var conjure_json_input_list = try std.ArrayList(u8).initCapacity(allocator, conjure_json_dirty.len);
+        var dirty_lines = std.mem.splitScalar(u8, conjure_json_dirty, '\n');
+
+        while (dirty_lines.next()) |dirty_line| {
+            //~ ojf: Remove preceding '$ '
+            if (dirty_line.len > 2) {
+                try conjure_json_input_list.appendSlice(dirty_line[2..]);
+            }
+        }
+        break :in try conjure_json_input_list.toOwnedSlice();
+    };
 
     const input = try std.json.parseFromSliceLeaky(
         std.json.Value,
@@ -1209,7 +1446,10 @@ pub fn main() !void {
     }
 
     // Replace satvars
-    var stdout = std.io.getStdOut().writer();
+    var output_file = try std.fs.cwd().createFile(arguments.output_file.?, .{});
+    defer output_file.close();
+
+    var file_writer = output_file.writer();
     var lines = std.mem.split(u8, learnts_input, "\n");
     _ = lines.next().?; // Skip header
     while (lines.next()) |line| {
@@ -1243,7 +1483,7 @@ pub fn main() !void {
                 converted_literals.items,
             );
             defer allocator.free(joined);
-            try stdout.print("{s},\n", .{joined});
+            try file_writer.print("{s},\n", .{joined});
         }
     }
 }
@@ -1254,10 +1494,29 @@ test "Test the program" {
 
     const allocator = arena.allocator();
 
-    const test_string = "(car_Function1D_00018 in int (2, 3, 4..10)) + 10";
+    const test_string = "!(car_Function1D_00018 in int (2, 3, 4..10)) + -10";
 
     const tokens = lex(allocator, test_string);
     var diags = ParseDiagnostics{};
+
+    var eprime_file = try readFileIntoMemory(allocator, "model.eprime");
+    const conjure_json_input = in: {
+        var split = std.mem.splitSequence(u8, eprime_file, "$ Conjure's");
+        _ = split.next(); // Skipping the Essence Prime
+        const conjure_json_dirty = split.next() orelse {
+            @panic("Failed to get conjure JSON!");
+        };
+        var conjure_json_input_list = try std.ArrayList(u8).initCapacity(allocator, conjure_json_dirty.len);
+        var dirty_lines = std.mem.splitScalar(u8, conjure_json_dirty, '\n');
+
+        while (dirty_lines.next()) |dirty_line| {
+            //~ ojf: Remove preceding '$ '
+            if (dirty_line.len > 2) {
+                try conjure_json_input_list.appendSlice(dirty_line[2..]);
+            }
+        }
+        break :in try conjure_json_input_list.toOwnedSlice();
+    };
 
     const conjure_data = try ConjureData.parseLeaky(allocator, conjure_json_input);
 

@@ -4,14 +4,14 @@ program         -> nogood* EOF ;
 
 nogood          -> set_expr (OR set_expr)* NEWLINE? ;
 
-set_expr        -> equality_expr (IN INT LPAREN numeric (COMMA numeric)* RPAREN)* ;
+set_expr        -> shift_expr IN INT LPAREN numeric (COMMA numeric)* RPAREN ;
+shift_expr      -> SHIFT LPAREN shift_expr COMMA shift_expr RPAREN 
+                 | equality_expr ;
 equality_expr   -> comparison_expr ((EQ | NEQ) comparison_expr)* ;
 comparison_expr -> term_expr ((LEQ | GEQ | LT | GT) term_expr)* ;
 term_expr       -> factor_expr ((PLUS | MINUS) factor_expr)* ;
 factor_expr     -> not_expr ((MULT | DIV | MOD) not_expr)* ;
 unary_expr      -> (NOT | MINUS) unary_expr 
-                 | shift_expr ;
-shift_expr      -> SHIFT LPAREN atom_expr COMMA numeric RPAREN 
                  | atom_expr ;
 atom_expr       -> ID 
                  | TRUE

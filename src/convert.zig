@@ -108,7 +108,7 @@ fn convertShift(
     shift: *parser.ASTNode_ShiftExpr,
 ) ![]const u8 {
     return switch (shift.*) {
-        .eql => |eql| convertExpr(allocator, parser.ASTNode_EqualityExpr, eql),
+        .or_expr => |or_expr| convertExpr(allocator, parser.ASTNode_OrExpr, or_expr),
         .shift => |s| b: {
             const lhs_str = try convertShift(allocator, s.lhs);
             const rhs_str = try convertShift(allocator, s.rhs);
@@ -157,7 +157,9 @@ fn convertExpr(
             .MULT => " * ",
             .DIV => " / ",
             .MOD => " % ",
-            else => @panic("Unrecongnized operation!"),
+            .OR => " \\/ ",
+            .AND => " /\\ ",
+            else => @panic("Unrecognized operation!"),
         };
 
         const expr_str: []const u8 = try (if (ExprType.SubExpr == parser.ASTNode_UnaryExpr)
@@ -220,7 +222,7 @@ fn convertAtom(
 
             var firstDim = true;
             for (identifier.dimensions) |dim| {
-                const connector: []const u8 = if (firstDim) "" else ",";
+                const connector: []const u8 = if (firstDim) "" else ", ";
                 firstDim = false;
 
                 const new_ret = try std.fmt.allocPrint(allocator, "{s}{s}{}", .{ ret, connector, dim });

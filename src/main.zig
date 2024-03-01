@@ -16,11 +16,16 @@ const ConjureData = parser.ConjureData;
 
 pub const log_level: std.log.Level = .debug;
 
+const ParseAndConvertResult = struct {
+    parse_result: *parser.ASTNode_Program,
+    convert_result: []const u8,
+};
+
 pub fn parseAndConvert(
     allocator: std.mem.Allocator,
     conjure_data: ConjureData,
     input: []const u8,
-) ![]const u8 {
+) !ParseAndConvertResult {
     var tokens = lexer.lex(allocator, input);
     var diags = ParseDiagnostics{};
     var parseOptions = ParseOptions{
@@ -58,22 +63,20 @@ pub fn parseAndConvert(
         std.os.exit(1);
     };
 
-    return try convert.convertProgram(
-        allocator,
-        parse_result,
-    );
+    return .{
+        .parse_result = parse_result,
+        .convert_result = try convert.convertProgram(allocator, parse_result),
+    };
 }
 
-fn readFileIntoMemory(
+fn readFile(
     allocator: std.mem.Allocator,
     filename: []const u8,
 ) ![]const u8 {
-    const file = try std.fs.cwd().openFile(filename, .{});
-    const file_stat = try file.stat();
-
-    var buf: []u8 = try allocator.alloc(u8, file_stat.size);
-    _ = try file.readAll(buf);
-    return buf;
+    return std.fs.cwd().readFileAlloc(allocator, filename, 64 * 1000 * 1000 * 1000) catch {
+        print("Unable to read the file from the following path: {s}\n", .{filename});
+        std.os.exit(1);
+    };
 }
 
 pub fn main() !void {
@@ -89,9 +92,12 @@ pub fn main() !void {
 
     const args = try arguments.parseArguments(allocator, &_args);
 
-    const json_input = try readFileIntoMemory(allocator, args.encodings_file.?);
-    var eprime_file = try readFileIntoMemory(allocator, args.conjure_json_file.?);
-    const learnts_input = try readFileIntoMemory(allocator, args.learnts_file.?);
+    const json_input = try readFile(allocator, args.encodings_file.?);
+    var eprime_file = try readFile(allocator, args.conjure_json_file.?);
+    const learnts_input = try readFile(allocator, args.learnts_file.?);
+    defer allocator.free(json_input);
+    defer allocator.free(eprime_file);
+    defer allocator.free(learnts_input);
 
     const conjure_json_input = in: {
         var split = std.mem.splitSequence(u8, eprime_file, "$ Conjure's");
@@ -144,7 +150,7 @@ pub fn main() !void {
                 conjure_data,
                 string,
             );
-            defer allocator.free(converted);
+            defer allocator.free(converted.convert_result);
 
             var pos_val: []const u8 = undefined;
             var neg_val: []const u8 = undefined;
@@ -169,14 +175,13 @@ pub fn main() !void {
             const positive = try std.fmt.allocPrint(
                 allocator,
                 "{s}{s}{s}",
-                .{ converted, pos_op, pos_val },
+                .{ converted.convert_result, pos_op, pos_val },
             );
             const negative = try std.fmt.allocPrint(
                 allocator,
                 "{s}{s}{s}",
-                .{ converted, neg_op, neg_val },
+                .{ converted.convert_result, neg_op, neg_val },
             );
-            allocator.free(converted);
 
             const int_key = try std.fmt.parseInt(i64, key, 10);
 
@@ -185,7 +190,13 @@ pub fn main() !void {
         }
     }
 
-    // Replace satvars
+    // Replace satvar
+    //~ oyy: create the whole output path.
+    if (std.fs.path.dirname(args.output_file.?)) |dirname| {
+        std.fs.cwd().makePath(dirname) catch {
+            print("Could not create the output directories.", .{});
+        };
+    }
     var output_file = try std.fs.cwd().createFile(args.output_file.?, .{});
     defer output_file.close();
 
@@ -239,7 +250,7 @@ test "Test the program" {
     const tokens = lexer.lex(allocator, test_string);
     var diags = ParseDiagnostics{};
 
-    var eprime_file = try readFileIntoMemory(allocator, "model.eprime");
+    var eprime_file = try readFile(allocator, "model.eprime");
     const conjure_json_input = in: {
         var split = std.mem.splitSequence(u8, eprime_file, "$ Conjure's");
         _ = split.next(); // Skipping the Essence Prime

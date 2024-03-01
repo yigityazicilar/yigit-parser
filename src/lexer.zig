@@ -22,6 +22,7 @@ pub const TokenType = enum {
     INT,
     COMMA,
     OR,
+    AND,
     AT,
     MULT,
     DIV,
@@ -67,7 +68,6 @@ pub fn lex(allocator: std.mem.Allocator, input: []const u8) []Token {
             '+' => .PLUS,
             '-' => .MINUS,
             '*' => .MULT,
-            '/' => .DIV,
             '%' => .MOD,
             '@' => .AT,
             ',' => .COMMA,
@@ -85,7 +85,17 @@ pub fn lex(allocator: std.mem.Allocator, input: []const u8) []Token {
             '\r' => t: {
                 if (i + 1 != input.len and input[i + 1] == '\n') {
                     i += 1;
-                    break :t .RANGE;
+                    line += 1;
+                    col = 0;
+                    break :t .NEWLINE;
+                }
+            },
+            '/' => t: {
+                if (i + 1 != input.len and input[i + 1] == '\\') {
+                    i += 1;
+                    break :t .AND;
+                } else {
+                    break :t .DIV;
                 }
             },
             '\\' => t: {

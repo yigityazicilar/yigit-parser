@@ -1,0 +1,12 @@
+X could be all/first half/last 10%/a specific row or column/10% of the matrix/etc.
+Y can be whatever is contained inside the matrix/function/etc.
+
+Start from a streamliner and see if it can be inferred from the nogoods.
+
+----------------------Potential Streamliners-----------------------
+X of the matrix/function/etc is higher/lower/equal/etc. than Y
+X of the matrix is odd/even
+X of the matrix is monotonically increasing/decreasing (No need if there is lex already)
+Function is commutative/associative/etc.
+First/Last element is smallest/largest
+

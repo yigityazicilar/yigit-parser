@@ -301,18 +301,18 @@ pub const ASTNode_SetExpr = struct {
     }
 };
 
-pub const ShiftType = enum { shift, eql };
+pub const ShiftType = enum { shift, or_expr };
 
 pub const ASTNode_ShiftExpr = union(ShiftType) {
     shift: struct {
         lhs: *ASTNode_ShiftExpr,
         rhs: *ASTNode_ShiftExpr,
     },
-    eql: *ASTNode_EqualityExpr,
+    or_expr: *ASTNode_OrExpr,
 
     fn print(self: ASTNode_ShiftExpr, indent: u32) void {
         switch (self) {
-            .eql => |node| node.print(indent),
+            .or_expr => |node| node.print(indent),
             .shift => |node| {
                 printIndent(indent);
                 std.debug.print("ShiftExpr:\n", .{});
@@ -391,19 +391,19 @@ pub const ASTNode_ShiftExpr = union(ShiftType) {
             };
         }
 
-        if (try ASTNode_EqualityExpr.parse(
+        if (try ASTNode_OrExpr.parse(
             options,
             tokens,
             current_position,
         )) |result| {
             current_position += result.advance;
-            const expr = try options.allocator.create(ASTNode_EqualityExpr);
+            const expr = try options.allocator.create(ASTNode_OrExpr);
             expr.* = result.node;
 
             return ParseResult(ASTNode_ShiftExpr){
                 .advance = current_position - position,
                 .node = .{
-                    .eql = expr,
+                    .or_expr = expr,
                 },
             };
         }
@@ -506,6 +506,16 @@ pub fn BinaryOpNode(
     };
 }
 
+pub const ASTNode_OrExpr = BinaryOpNode(
+    ASTNode_AndExpr,
+    "OrExpr",
+    &.{.OR},
+);
+pub const ASTNode_AndExpr = BinaryOpNode(
+    ASTNode_EqualityExpr,
+    "AndExpr",
+    &.{.AND},
+);
 pub const ASTNode_EqualityExpr = BinaryOpNode(
     ASTNode_ComparisonExpr,
     "EqualityExpr",

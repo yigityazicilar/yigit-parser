@@ -1,9 +1,11 @@
 const std = @import("std");
 const lexer = @import("lexer.zig");
+const model = @import("model_data.zig");
 const print = std.debug.print;
 
 const TokenType = lexer.TokenType;
 const Token = lexer.Token;
+const ModelData = model.ModelData;
 
 fn printIndent(indent: u32) void {
     var tabsToPrint = indent;
@@ -30,71 +32,6 @@ fn isNextTokenOneOfTypes(
     return false;
 }
 
-pub const ConjureData = struct {
-    finds: []const []const u8,
-    domains: std.StringArrayHashMap(DomainType),
-
-    /// Parse JSON from conjure
-    pub fn parseLeaky(allocator: std.mem.Allocator, input: []const u8) !ConjureData {
-        var ret = ConjureData{
-            .finds = undefined,
-            .domains = std.StringArrayHashMap(DomainType).init(allocator),
-        };
-
-        const conjure = try std.json.parseFromSliceLeaky(
-            std.json.Value,
-            allocator,
-            input,
-            .{},
-        );
-
-        const finds_json_array: std.json.Value = conjure.object.get("finds") orelse {
-            @panic("Could not get finds!");
-        };
-        var finds_arraylist = std.ArrayList([]const u8).init(allocator);
-
-        for (finds_json_array.array.items) |find| {
-            try finds_arraylist.append(find.object.get("Name").?.string);
-        }
-        ret.finds = try finds_arraylist.toOwnedSlice();
-
-        const original_domains_array: std.json.Value = conjure.object.get(
-            "originalDomains",
-        ) orelse {
-            @panic("Could not get domains array!");
-        };
-
-        for (original_domains_array.array.items) |item| {
-            const domain_name = item
-                .array.items[0]
-                .object.get("Name").?.string;
-
-            for (ret.finds) |find| {
-                if (std.mem.eql(u8, find, domain_name)) {
-                    const domain = parseDomainType(
-                        item.array.items[1]
-                            .object.keys()[0],
-                    );
-
-                    try ret.domains.put(domain_name, domain);
-                }
-            }
-        }
-
-        return ret;
-    }
-
-    fn parseDomainType(string: []const u8) DomainType {
-        if (std.mem.eql(u8, string, "DomainMatrix")) {
-            return .matrix;
-        }
-        if (std.mem.eql(u8, string, "DomainFunction")) {
-            return .function;
-        }
-        @panic("Failed to parse domain type!");
-    }
-};
-
 pub const ParseDiagnostics = struct {
     error_token: ?Token = null,
     error_expected: ?[]const u8 = null,
@@ -103,7 +40,7 @@ pub const ParseDiagnostics = struct {
 pub const ParseOptions = struct {
     allocator: std.mem.Allocator,
     diags: *ParseDiagnostics,
-    conjure: ConjureData,
+    model_data: ModelData,
 };
 
 pub const ParseError = error{
@@ -808,13 +745,8 @@ pub const ASTNode_Numeric = union(NumericType) {
     }
 };
 
-pub const DomainType = enum {
-    matrix,
-    function,
-};
-
 pub const ASTNode_Identifier = struct {
-    domain: DomainType,
+    domain: model.DomainType,
     name: []const u8,
     dimensions: []const i64,
 
@@ -834,11 +766,11 @@ pub const ASTNode_Identifier = struct {
 
         const token = tokens[position];
         const identifier = token.lexeme;
-        for (options.conjure.finds) |find| {
+        for (options.model_data.finds) |find| {
             if (identifier.len >= find.len and
                 std.mem.eql(u8, find, identifier[0..find.len]))
             {
-                const domain = options.conjure.domains.get(find) orelse {
+                const domain = options.model_data.domain_types.get(find) orelse {
                     options.diags.error_token = token;
                     return ParseError.DomainNotFound;
                 };

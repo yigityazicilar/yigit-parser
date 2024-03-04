@@ -3,6 +3,8 @@ const lexer = @import("lexer.zig");
 const parser = @import("parser.zig");
 const arguments = @import("args.zig");
 const convert = @import("convert.zig");
+const model = @import("model_data.zig");
+const candidate_streamliners = @import("candidate_streamliners.zig");
 const print = std.debug.print;
 
 const TokenType = lexer.TokenType;
@@ -11,8 +13,7 @@ const Token = lexer.Token;
 const ParseDiagnostics = parser.ParseDiagnostics;
 const ParseOptions = parser.ParseOptions;
 const ParseError = parser.ParseError;
-const DomainType = parser.DomainType;
-const ConjureData = parser.ConjureData;
+const ModelData = model.ModelData;
 
 pub const log_level: std.log.Level = .debug;
 
@@ -23,14 +24,14 @@ const ParseAndConvertResult = struct {
 
 pub fn parseAndConvert(
     allocator: std.mem.Allocator,
-    conjure_data: ConjureData,
+    model_data: ModelData,
     input: []const u8,
 ) !ParseAndConvertResult {
     var tokens = lexer.lex(allocator, input);
     var diags = ParseDiagnostics{};
     var parseOptions = ParseOptions{
         .allocator = allocator,
-        .conjure = conjure_data,
+        .model_data = model_data,
         .diags = &diags,
     };
 
@@ -95,9 +96,11 @@ pub fn main() !void {
     const json_input = try readFile(allocator, args.encodings_file.?);
     var eprime_file = try readFile(allocator, args.conjure_json_file.?);
     const learnts_input = try readFile(allocator, args.learnts_file.?);
+    const finds_input = try readFile(allocator, args.finds_file.?);
     defer allocator.free(json_input);
     defer allocator.free(eprime_file);
     defer allocator.free(learnts_input);
+    defer allocator.free(finds_input);
 
     const conjure_json_input = in: {
         var split = std.mem.splitSequence(u8, eprime_file, "$ Conjure's");
@@ -124,7 +127,8 @@ pub fn main() !void {
         .{},
     );
 
-    const conjure_data = try ConjureData.parseLeaky(allocator, conjure_json_input);
+    const model_data = try ModelData.parseLeaky(allocator, conjure_json_input, finds_input);
+    _ = candidate_streamliners.newBin(allocator, model_data.domains[0]);
 
     var converted_map = std.AutoArrayHashMap(i64, []const u8)
         .init(allocator);
@@ -147,7 +151,7 @@ pub fn main() !void {
 
             const converted = try parseAndConvert(
                 parser_allocator,
-                conjure_data,
+                model_data,
                 string,
             );
             defer allocator.free(converted.convert_result);
@@ -251,6 +255,10 @@ test "Test the program" {
     var diags = ParseDiagnostics{};
 
     var eprime_file = try readFile(allocator, "model.eprime");
+    const finds_input = try readFile(allocator, "finds.json");
+    defer allocator.free(eprime_file);
+    defer allocator.free(finds_input);
+
     const conjure_json_input = in: {
         var split = std.mem.splitSequence(u8, eprime_file, "$ Conjure's");
         _ = split.next(); // Skipping the Essence Prime
@@ -269,11 +277,11 @@ test "Test the program" {
         break :in try conjure_json_input_list.toOwnedSlice();
     };
 
-    const conjure_data = try ConjureData.parseLeaky(allocator, conjure_json_input);
+    const model_data = try ModelData.parseLeaky(allocator, conjure_json_input, finds_input);
 
     const parseOptions = ParseOptions{
         .allocator = allocator,
-        .conjure = conjure_data,
+        .model_data = model_data,
         .diags = &diags,
     };
     const parse_result = parser.parse(parseOptions, tokens) catch |err| {

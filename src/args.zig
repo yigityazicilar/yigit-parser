@@ -5,10 +5,11 @@ const ArgumentsStruct = struct {
     encodings_file: ?[]const u8 = null,
     conjure_json_file: ?[]const u8 = null,
     learnts_file: ?[]const u8 = null,
+    finds_file: ?[]const u8 = null,
     output_file: ?[]const u8 = null,
 };
 
-const usageMessage: []const u8 = "Usage: process-nogoods -e <encodings-file> -c <conjure-json-file> -l <learnts-file> [-o <output-file>]\n";
+const usageMessage: []const u8 = "Usage: process-nogoods -e <encodings-file> -c <conjure-json-file> -l <learnts-file> -f <finds-file> [-o <output-file>]\n";
 inline fn streql(s1: []const u8, s2: []const u8) bool {
     return std.mem.eql(u8, s1, s2);
 }
@@ -35,6 +36,11 @@ pub fn parseArguments(
                 print("{s}process-nogoods: Error: argument -l/--learnts requires a value\n", .{usageMessage});
                 std.os.exit(1);
             };
+        } else if (streql(arg, "--finds") or streql(arg, "-f")) {
+            ret.finds_file = args.next() orelse {
+                print("{s}process-nogoods: Error: argument -f/--finds requires a value\n", .{usageMessage});
+                std.os.exit(1);
+            };
         } else if (streql(arg, "--output") or streql(arg, "-o")) {
             ret.output_file = args.next() orelse {
                 print("{s}process-nogoods: Error: argument -o/--output requires a value\n", .{usageMessage});
@@ -53,6 +59,9 @@ pub fn parseArguments(
     }
     if (ret.learnts_file == null) {
         try missing_args.append("-l/--learnts");
+    }
+    if (ret.finds_file == null) {
+        try missing_args.append("-f/--finds");
     }
     if (ret.output_file == null) {
         ret.output_file = "output.eprime";

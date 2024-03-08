@@ -128,7 +128,7 @@ pub fn main() !void {
     );
 
     const model_data = try ModelData.parseLeaky(allocator, conjure_json_input, finds_input);
-    _ = candidate_streamliners.createBin(allocator, model_data.domains[0]);
+    _ = try candidate_streamliners.createBin(allocator, model_data.domains[0]);
 
     var converted_map = std.AutoArrayHashMap(i64, []const u8)
         .init(allocator);

@@ -30,19 +30,19 @@ pub const Bin = union(BinType) {
     count: u32,
 };
 
-pub fn createBin(allocator: std.mem.Allocator, d: model.Domain) *Bin {
-    const domain_bin = try allocator.create(Bin);
-    const list = std.ArrayList(model.Range).init(allocator);
+pub fn createBin(allocator: std.mem.Allocator, d: model.Domain) !*Bin {
+    const bins = try allocator.create(Bin);
+    var list = std.ArrayList(model.Range).init(allocator);
     for (d.dimensions) |dim| {
         try list.append(dim);
     }
 
     try list.append(d.domain);
 
-    return createBinHelper(allocator, domain_bin, list.items);
+    return createBinHelper(allocator, bins, list.items);
 }
 
-fn createBinHelper(allocator: std.mem.Allocator, bin: *Bin, ranges: []model.Range) *Bin {
+fn createBinHelper(allocator: std.mem.Allocator, bin: *Bin, ranges: []model.Range) !*Bin {
     if (ranges.len == 0) {
         bin.count = 0;
         return bin;
@@ -60,7 +60,7 @@ fn createBinHelper(allocator: std.mem.Allocator, bin: *Bin, ranges: []model.Rang
             },
         };
         const b1: *Bin = try allocator.create(Bin);
-        try bin.hash.put(d1, createBinHelper(allocator, b1, ranges[1..]));
+        try bin.hash.put(d1, try createBinHelper(allocator, b1, ranges[1..]));
 
         const d2: Delimiter = .{
             .op = .{
@@ -69,7 +69,7 @@ fn createBinHelper(allocator: std.mem.Allocator, bin: *Bin, ranges: []model.Rang
             },
         };
         const b2: *Bin = try allocator.create(Bin);
-        try bin.hash.put(d2, createBinHelper(allocator, b2, ranges[1..]));
+        try bin.hash.put(d2, try createBinHelper(allocator, b2, ranges[1..]));
 
         const d3: Delimiter = .{
             .op = .{
@@ -78,7 +78,7 @@ fn createBinHelper(allocator: std.mem.Allocator, bin: *Bin, ranges: []model.Rang
             },
         };
         const b3: *Bin = try allocator.create(Bin);
-        try bin.hash.put(d3, createBinHelper(allocator, b3, ranges[1..]));
+        try bin.hash.put(d3, try createBinHelper(allocator, b3, ranges[1..]));
 
         if (i == 8) {
             l = u;

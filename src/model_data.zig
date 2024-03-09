@@ -69,7 +69,8 @@ pub const ModelData = struct {
             //         print("The find variable {s} cannot be found inside the model.\n", .{d.name});
             //         std.os.exit(1);
             //     };
-            printDomain(d);
+            // printDomain(d);
+            _ = d;
         }
 
         ret.domains = domains;
@@ -99,7 +100,7 @@ pub const Domain = struct {
     dimensions: []Range,
 };
 
-pub const Range = struct { lower: u32, upper: u32 };
+pub const Range = struct { lower: isize, upper: isize };
 
 fn printDomain(d: Domain) void {
     print("{{\n", .{});

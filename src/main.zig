@@ -128,7 +128,31 @@ pub fn main() !void {
     );
 
     const model_data = try ModelData.parseLeaky(allocator, conjure_json_input, finds_input);
-    _ = try candidate_streamliners.createBin(allocator, model_data.domains[0]);
+    var bins = try candidate_streamliners.createBin(allocator, model_data.domains[0]);
+    var vals = std.ArrayList(candidate_streamliners.Value).init(allocator);
+    try vals.append(candidate_streamliners.Value.all);
+    try vals.append(candidate_streamliners.Value.all);
+    try vals.append(candidate_streamliners.Value.all);
+    candidate_streamliners.increment(bins, try vals.toOwnedSlice());
+
+    const count = bins.hash.get(.{
+        .op = .{
+            .op = .LEQ,
+            .value = 9,
+        },
+    }).?.hash.get(.{
+        .op = .{
+            .op = .GEQ,
+            .value = 1,
+        },
+    }).?.hash.get(.{
+        .op = .{
+            .op = .GEQ,
+            .value = 1,
+        },
+    }).?.count;
+
+    print("{}\n", .{count});
 
     var converted_map = std.AutoArrayHashMap(i64, []const u8)
         .init(allocator);

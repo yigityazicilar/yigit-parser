@@ -133,9 +133,9 @@ pub fn main() !void {
     try vals.append(candidate_streamliners.Value.all);
     try vals.append(candidate_streamliners.Value.all);
     try vals.append(candidate_streamliners.Value.all);
-    candidate_streamliners.increment(bins, try vals.toOwnedSlice());
+    candidate_streamliners.increment(bins, vals.items);
 
-    const count = bins.hash.get(.{
+    var count = bins.hash.get(.{
         .op = .{
             .op = .LEQ,
             .value = 9,

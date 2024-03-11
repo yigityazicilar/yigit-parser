@@ -4,7 +4,7 @@ const parser = @import("parser.zig");
 const arguments = @import("args.zig");
 const convert = @import("convert.zig");
 const model = @import("model_data.zig");
-const candidate_streamliners = @import("candidate_streamliners.zig");
+const bin = @import("bin.zig");
 const print = std.debug.print;
 
 const TokenType = lexer.TokenType;
@@ -128,12 +128,12 @@ pub fn main() !void {
     );
 
     const model_data = try ModelData.parseLeaky(allocator, conjure_json_input, finds_input);
-    var bins = try candidate_streamliners.createBin(allocator, model_data.domains[0]);
-    var vals = std.ArrayList(candidate_streamliners.Value).init(allocator);
-    try vals.append(candidate_streamliners.Value.all);
-    try vals.append(candidate_streamliners.Value.all);
-    try vals.append(candidate_streamliners.Value.all);
-    candidate_streamliners.increment(bins, vals.items);
+    var bins = try bin.createBin(allocator, model_data.domains[0]);
+    var vals = std.ArrayList(bin.Value).init(allocator);
+    try vals.append(bin.Value.all);
+    try vals.append(bin.Value.all);
+    try vals.append(bin.Value.all);
+    bin.increment(bins, vals.items);
 
     var count = bins.hash.get(.{
         .op = .{
@@ -273,7 +273,7 @@ test "Test the program" {
 
     const allocator = arena.allocator();
 
-    const test_string = "shift((car_Function1D_00018 in int (4, 3, 5..10)), 9)";
+    const test_string = "car_Function1D_00018 in int (4, 3, 5..10)";
 
     const tokens = lexer.lex(allocator, test_string);
     var diags = ParseDiagnostics{};

@@ -230,7 +230,8 @@ const BinReturn = struct {
     op: ?lexer.TokenType,
 };
 
-pub fn binProgram(allocator: std.mem.Allocator, bin: *Bin, program: *parser.ASTNode_Program) void {
+// TODO(oyy): The way this is implemented cannot handle more than one find variable.
+pub fn binProgram(allocator: std.mem.Allocator, model_data: ModelData, bin: *Bin, program: *parser.ASTNode_Program) void {
     for (program.nogood) |nogood| {
         const nogood_values = binNogood(allocator, bin, nogood);
         for (nogood_values) |n| {
@@ -239,9 +240,65 @@ pub fn binProgram(allocator: std.mem.Allocator, bin: *Bin, program: *parser.ASTN
                 try increment_list.append(.{ .val = d });
             }
 
-            // TODO(oyy): Check the operator here and assign values depending on that.
+            const domain = model_data.domains[0].domain;
             if (n.val) |v| {
-                try increment_list.append(.{ .val = v });
+                switch (n.op.?) {
+                    .EQ => {
+                        try increment_list.append(.{ .val = v });
+                    },
+                    .NEQ => {
+                        var i = domain.lower;
+                        while (i <= domain.upper) : (i += 1) {
+                            if (i != v) {
+                                try increment_list.append(.{ .val = i });
+                                increment(bin, increment_list.items);
+                                _ = increment_list.pop();
+                            }
+                        }
+                        increment_list.deinit();
+                        continue;
+                    },
+                    .LT => {
+                        var i = domain.lower;
+                        while (i < v) : (i += 1) {
+                            try increment_list.append(.{ .val = i });
+                            increment(bin, increment_list.items);
+                            _ = increment_list.pop();
+                        }
+                        increment_list.deinit();
+                        continue;
+                    },
+                    .LEQ => {
+                        var i = domain.lower;
+                        while (i <= v) : (i += 1) {
+                            try increment_list.append(.{ .val = i });
+                            increment(bin, increment_list.items);
+                            _ = increment_list.pop();
+                        }
+                        increment_list.deinit();
+                        continue;
+                    },
+                    .GT => {
+                        var i = v + 1;
+                        while (i <= domain.upper) : (i += 1) {
+                            try increment_list.append(.{ .val = i });
+                            increment(bin, increment_list.items);
+                            _ = increment_list.pop();
+                        }
+                        increment_list.deinit();
+                        continue;
+                    },
+                    .GEQ => {
+                        var i = v;
+                        while (i <= domain.upper) : (i += 1) {
+                            try increment_list.append(.{ .val = i });
+                            increment(bin, increment_list.items);
+                            _ = increment_list.pop();
+                        }
+                        increment_list.deinit();
+                        continue;
+                    },
+                }
             } else {
                 try increment_list.append(Value.all);
             }
@@ -362,7 +419,6 @@ fn binEqualityExpr(allocator: std.mem.Allocator, bin: *Bin, eq_expr: *parser.AST
         //      Otherwise, it is impossible to get information about the restricted domain.
         if (lhs.len == 1 and rhs.len == 1) {
             // Should be able to check if two numbers are equal to each other but that would be stupid in this case.
-            // TODO(oyy): Need to decide on what to do for not equals. Should increment everything that is not those bins.
             if (lhs[0].val) |v| {
                 return &.{.{
                     .dimensions = rhs[0].dimensions,
@@ -403,10 +459,20 @@ fn binComparisonExpr(allocator: std.mem.Allocator, bin: *Bin, cmp_expr: *parser.
 
         if (lhs.len == 1 and rhs.len == 1) {
             if (lhs[0].val) |v| {
+                var op_new: lexer.TokenType = undefined;
+                if (op.op == .LT) {
+                    op_new = .GT;
+                } else if (op.op == .LEQ) {
+                    op_new = .GTE;
+                } else if (op.op == .GT) {
+                    op_new = .LT;
+                } else {
+                    op_new = .LTE;
+                }
                 return &.{.{
                     .dimensions = rhs[0].dimensions,
                     .val = v,
-                    .op = op.op,
+                    .op = op_new,
                 }};
             } else if (rhs[0].val) |v| {
                 return &.{.{

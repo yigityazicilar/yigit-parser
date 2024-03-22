@@ -3,3 +3,6 @@ zig-out/*
 *.eprime
 *.json
 *.learnts
+*.finds
+*.bins
+*.txt

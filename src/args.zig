@@ -7,9 +7,10 @@ const ArgumentsStruct = struct {
     learnts_file: ?[]const u8 = null,
     finds_file: ?[]const u8 = null,
     output_file: ?[]const u8 = null,
+    bin_file: ?[]const u8 = null,
 };
 
-const usageMessage: []const u8 = "Usage: process-nogoods -e <encodings-file> -c <conjure-json-file> -l <learnts-file> -f <finds-file> [-o <output-file>]\n";
+const usageMessage: []const u8 = "Usage: process-nogoods -e <encodings-file> -c <conjure-json-file> -l <learnts-file> -f <finds-file> [-o <output-file>] [-b <bin-file>]\n";
 inline fn streql(s1: []const u8, s2: []const u8) bool {
     return std.mem.eql(u8, s1, s2);
 }
@@ -46,6 +47,14 @@ pub fn parseArguments(
                 print("{s}process-nogoods: Error: argument -o/--output requires a value\n", .{usageMessage});
                 std.os.exit(1);
             };
+        } else if (streql(arg, "--bin-output") or streql(arg, "-b")) {
+            ret.bin_file = args.next() orelse {
+                print("{s}process-nogoods: Error: argument -b/--bin-output requires a value\n", .{usageMessage});
+                std.os.exit(1);
+            };
+        } else {
+            print("{s}process-nogoods: Error: unknown argument: {s}\n", .{ usageMessage, arg });
+            std.os.exit(1);
         }
     }
 
@@ -65,6 +74,9 @@ pub fn parseArguments(
     }
     if (ret.output_file == null) {
         ret.output_file = "output.eprime";
+    }
+    if (ret.bin_file == null) {
+        ret.bin_file = "output.bin";
     }
 
     if (missing_args.items.len > 0) {

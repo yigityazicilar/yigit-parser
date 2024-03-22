@@ -82,7 +82,7 @@ fn readFile(
 
 pub fn main() !void {
     // Global Arena
-    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    var arena = std.heap.ArenaAllocator.init(std.heap.c_allocator);
     defer arena.deinit();
 
     const allocator = arena.allocator();
@@ -129,36 +129,13 @@ pub fn main() !void {
 
     const model_data = try ModelData.parseLeaky(allocator, conjure_json_input, finds_input);
     var bins = try bin.createBin(allocator, model_data.domains[0]);
-    var vals = std.ArrayList(bin.Value).init(allocator);
-    try vals.append(bin.Value.all);
-    try vals.append(bin.Value.all);
-    try vals.append(bin.Value.all);
-    bin.increment(bins, vals.items);
-
-    var count = bins.hash.get(.{
-        .op = .{
-            .op = .LEQ,
-            .value = 9,
-        },
-    }).?.hash.get(.{
-        .op = .{
-            .op = .GEQ,
-            .value = 1,
-        },
-    }).?.hash.get(.{
-        .op = .{
-            .op = .GEQ,
-            .value = 1,
-        },
-    }).?.count;
-
-    print("{}\n", .{count});
 
     var converted_map = std.AutoArrayHashMap(i64, []const u8)
         .init(allocator);
+    var bin_value_map = std.AutoArrayHashMap(i64, []const bin.BinReturn).init(allocator);
 
     // Parser Arena
-    var parser_arena = std.heap.ArenaAllocator.init(allocator);
+    var parser_arena = std.heap.ArenaAllocator.init(std.heap.c_allocator);
     defer parser_arena.deinit();
 
     const parser_allocator = parser_arena.allocator();
@@ -179,6 +156,7 @@ pub fn main() !void {
                 string,
             );
             defer allocator.free(converted.convert_result);
+            const bin_values = try bin.binProgram(allocator, converted.parse_result);
 
             var pos_val: []const u8 = undefined;
             var neg_val: []const u8 = undefined;
@@ -215,6 +193,8 @@ pub fn main() !void {
 
             try converted_map.put(int_key, positive);
             try converted_map.put(-1 * int_key, negative);
+            try bin_value_map.put(int_key, bin_values);
+            try bin_value_map.put(-1 * int_key, bin_values);
         }
     }
 
@@ -222,7 +202,7 @@ pub fn main() !void {
     //~ oyy: create the whole output path.
     if (std.fs.path.dirname(args.output_file.?)) |dirname| {
         std.fs.cwd().makePath(dirname) catch {
-            print("Could not create the output directories.", .{});
+            print("Could not create the output directories.\n", .{});
         };
     }
     var output_file = try std.fs.cwd().createFile(args.output_file.?, .{});
@@ -231,6 +211,10 @@ pub fn main() !void {
     var file_writer = output_file.writer();
     var lines = std.mem.split(u8, learnts_input, "\n");
     _ = lines.next().?; // Skip header
+    var line_number: u32 = 0;
+
+    const writer_allocator = std.heap.c_allocator;
+
     while (lines.next()) |line| {
         var cells = std.mem.split(u8, line, ", ");
         var size_str = cells.next() orelse {
@@ -240,7 +224,8 @@ pub fn main() !void {
             continue;
         };
         var converted_literals = try std.ArrayList([]const u8)
-            .initCapacity(allocator, size);
+            .initCapacity(writer_allocator, size);
+        defer converted_literals.deinit();
 
         var clause = cells.next() orelse {
             continue;
@@ -252,19 +237,47 @@ pub fn main() !void {
             const converted = converted_map.get(literal_int) orelse {
                 continue;
             };
+            const bin_values: []const bin.BinReturn = bin_value_map.get(literal_int).?;
+            for (bin_values) |bv| {
+                if (bv.dimensions.len == 0) {
+                    continue;
+                }
+
+                var increment_list = std.ArrayList(bin.Value).init(writer_allocator);
+                defer increment_list.deinit();
+                for (bv.dimensions) |d| {
+                    try increment_list.append(.{ .val = d });
+                }
+
+                bin.increment(bins, increment_list.items);
+            }
+
             try converted_literals.append(converted);
         }
 
         if (converted_literals.items.len == size) {
             const joined = try std.mem.join(
-                allocator,
+                writer_allocator,
                 " \\/ ",
                 converted_literals.items,
             );
-            defer allocator.free(joined);
+            defer writer_allocator.free(joined);
+
             try file_writer.print("{s},\n", .{joined});
         }
+        line_number += 1;
     }
+    const binCSV = try bins.toCSV(allocator, true);
+    if (std.fs.path.dirname(args.bin_file.?)) |dirname| {
+        std.fs.cwd().makePath(dirname) catch {
+            print("Could not create the output directories.\n", .{});
+        };
+    }
+    var bin_file = try std.fs.cwd().createFile(args.output_file.?, .{});
+    defer bin_file.close();
+
+    var bin_file_writer = output_file.writer();
+    try bin_file_writer.print("{s}\n", .{binCSV});
 }
 
 test "Test the program" {

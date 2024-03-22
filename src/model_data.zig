@@ -65,12 +65,10 @@ pub const ModelData = struct {
         );
 
         for (domains) |d| {
-            //     std.testing.expect(ret.domain_types.contains(d.name)) catch {
-            //         print("The find variable {s} cannot be found inside the model.\n", .{d.name});
-            //         std.os.exit(1);
-            //     };
-            // printDomain(d);
-            _ = d;
+            std.testing.expect(ret.domain_types.contains(d.name)) catch {
+                print("The find variable {s} cannot be found inside the model.\n", .{d.name});
+                std.os.exit(1);
+            };
         }
 
         ret.domains = domains;

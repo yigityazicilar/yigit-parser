@@ -273,7 +273,7 @@ pub fn main() !void {
             print("Could not create the output directories.\n", .{});
         };
     }
-    var bin_file = try std.fs.cwd().createFile(args.output_file.?, .{});
+    var bin_file = try std.fs.cwd().createFile(args.bin_file.?, .{});
     defer bin_file.close();
 
     var bin_file_writer = output_file.writer();

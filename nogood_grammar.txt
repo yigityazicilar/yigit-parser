@@ -14,6 +14,7 @@ term_expr       -> factor_expr ((PLUS | MINUS) factor_expr)* ;
 factor_expr     -> not_expr ((MULT | DIV | MOD) not_expr)* ;
 unary_expr      -> (NOT | MINUS) unary_expr 
                  | atom_expr ;
+
 atom_expr       -> ID 
                  | TRUE
                  | FALSE

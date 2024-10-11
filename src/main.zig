@@ -27,9 +27,9 @@ pub fn parseAndConvert(
     model_data: ModelData,
     input: []const u8,
 ) !ParseAndConvertResult {
-    var tokens = lexer.lex(allocator, input);
+    const tokens = lexer.lex(allocator, input);
     var diags = ParseDiagnostics{};
-    var parseOptions = ParseOptions{
+    const parseOptions = ParseOptions{
         .allocator = allocator,
         .model_data = model_data,
         .diags = &diags,
@@ -61,7 +61,7 @@ pub fn parseAndConvert(
             else => return err,
         }
 
-        std.os.exit(1);
+        std.process.exit(1);
     };
 
     return .{
@@ -76,7 +76,7 @@ fn readFile(
 ) ![]const u8 {
     return std.fs.cwd().readFileAlloc(allocator, filename, 64 * 1000 * 1000 * 1000) catch {
         print("Unable to read the file from the following path: {s}\n", .{filename});
-        std.os.exit(1);
+        std.process.exit(1);
     };
 }
 
@@ -94,7 +94,7 @@ pub fn main() !void {
     const args = try arguments.parseArguments(allocator, &_args);
 
     const json_input = try readFile(allocator, args.encodings_file.?);
-    var eprime_file = try readFile(allocator, args.conjure_json_file.?);
+    const eprime_file = try readFile(allocator, args.conjure_json_file.?);
     const learnts_input = try readFile(allocator, args.learnts_file.?);
     const finds_input = try readFile(allocator, args.finds_file.?);
     defer allocator.free(json_input);
@@ -128,7 +128,10 @@ pub fn main() !void {
     );
 
     const model_data = try ModelData.parseLeaky(allocator, conjure_json_input, finds_input);
-    var bins = try bin.createBin(allocator, model_data.domains[0]);
+    for (model_data.finds) |find| {
+        print("Finds: {s}\n", .{find});
+    }
+    const bins = try bin.createBin(allocator, model_data.domains[0]);
 
     var converted_map = std.AutoArrayHashMap(i64, []const u8)
         .init(allocator);
@@ -217,17 +220,17 @@ pub fn main() !void {
 
     while (lines.next()) |line| {
         var cells = std.mem.split(u8, line, ", ");
-        var size_str = cells.next() orelse {
+        const size_str = cells.next() orelse {
             continue;
         };
-        var size = std.fmt.parseInt(usize, size_str, 10) catch {
+        const size = std.fmt.parseInt(usize, size_str, 10) catch {
             continue;
         };
         var converted_literals = try std.ArrayList([]const u8)
             .initCapacity(writer_allocator, size);
         defer converted_literals.deinit();
 
-        var clause = cells.next() orelse {
+        const clause = cells.next() orelse {
             continue;
         };
         var literals = std.mem.split(u8, clause, " ");
@@ -291,7 +294,7 @@ test "Test the program" {
     const tokens = lexer.lex(allocator, test_string);
     var diags = ParseDiagnostics{};
 
-    var eprime_file = try readFile(allocator, "model.eprime");
+    const eprime_file = try readFile(allocator, "model.eprime");
     const finds_input = try readFile(allocator, "finds.json");
     defer allocator.free(eprime_file);
     defer allocator.free(finds_input);
@@ -349,7 +352,7 @@ test "Test the program" {
             },
         }
 
-        std.os.exit(1);
+        std.process.exit(1);
     };
 
     parser.printParseTree(parse_result);

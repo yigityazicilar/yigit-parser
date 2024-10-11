@@ -218,6 +218,7 @@ fn convertAtom(
             var ret = switch (identifier.domain) {
                 .function => try std.fmt.allocPrint(allocator, "{s}_Function{}D[", .{ identifier.name, identifier.dimensions.len }),
                 .matrix => try std.fmt.allocPrint(allocator, "{s}[", .{identifier.name}),
+                .integer => try std.fmt.allocPrint(allocator, "{s}", .{identifier.name}),
             };
 
             var firstDim = true;

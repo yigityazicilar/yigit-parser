@@ -1,8 +1,9 @@
 zig-cache/*
 zig-out/*
-*.eprime
+*.eprime*
 *.json
 *.learnts
 *.finds
 *.bins
-*.txt
+.zig-cache
+.DS_Store

@@ -59,10 +59,10 @@ pub fn lex(allocator: std.mem.Allocator, input: []const u8) []Token {
     var line: usize = 0;
     var col: usize = 0;
     while (i < input.len) : (i += 1) {
-        var start_index = i;
+        const start_index = i;
         var token_number: ?i64 = null;
 
-        var token_type: TokenType = switch (input[i]) {
+        const token_type: TokenType = switch (input[i]) {
             '(' => .LPAREN,
             ')' => .RPAREN,
             '+' => .PLUS,
@@ -81,6 +81,7 @@ pub fn lex(allocator: std.mem.Allocator, input: []const u8) []Token {
                     i += 1;
                     break :t .RANGE;
                 }
+                continue;
             },
             '\r' => t: {
                 if (i + 1 != input.len and input[i + 1] == '\n') {
@@ -89,6 +90,8 @@ pub fn lex(allocator: std.mem.Allocator, input: []const u8) []Token {
                     col = 0;
                     break :t .NEWLINE;
                 }
+
+                continue;
             },
             '/' => t: {
                 if (i + 1 != input.len and input[i + 1] == '\\') {
@@ -188,10 +191,12 @@ pub fn lex(allocator: std.mem.Allocator, input: []const u8) []Token {
 
                     break :t .ID;
                 }
+
+                @panic("Unrecognized token!");
             },
         };
 
-        var token = Token{
+        const token = Token{
             .tag = token_type,
             .lexeme = input[start_index .. i + 1],
             .number = token_number,

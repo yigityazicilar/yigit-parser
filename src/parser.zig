@@ -706,7 +706,7 @@ pub const ASTNode_Numeric = union(NumericType) {
             return null;
         }
 
-        var first_number = tokens[current_position].number.?;
+        const first_number = tokens[current_position].number.?;
         current_position += 1;
 
         var node: ASTNode_Numeric = undefined;
@@ -725,7 +725,7 @@ pub const ASTNode_Numeric = union(NumericType) {
                 return ParseError.UnexpectedToken;
             }
 
-            var second_number = tokens[current_position].number.?;
+            const second_number = tokens[current_position].number.?;
             current_position += 1;
 
             node = ASTNode_Numeric{ .range = .{
@@ -766,6 +766,7 @@ pub const ASTNode_Identifier = struct {
 
         const token = tokens[position];
         const identifier = token.lexeme;
+        std.debug.print("Identifier: {s}\n", .{identifier});
         for (options.model_data.finds) |find| {
             if (identifier.len >= find.len and
                 std.mem.eql(u8, find, identifier[0..find.len]))
@@ -825,7 +826,7 @@ pub fn parse(options: ParseOptions, tokens: []const Token) !*ASTNode_Program {
     while (try ASTNode_Nogood.parse(options, tokens, position)) |result| {
         position += result.advance;
 
-        var expr = try options.allocator.create(ASTNode_Nogood);
+        const expr = try options.allocator.create(ASTNode_Nogood);
         expr.* = result.node;
 
         try nogood_list.append(expr);
@@ -835,7 +836,7 @@ pub fn parse(options: ParseOptions, tokens: []const Token) !*ASTNode_Program {
         return ParseError.UnexpectedEOF;
     }
 
-    var program = try options.allocator.create(ASTNode_Program);
+    const program = try options.allocator.create(ASTNode_Program);
     program.* = .{
         .nogood = try nogood_list.toOwnedSlice(),
     };

@@ -67,7 +67,7 @@ pub const ModelData = struct {
         for (domains) |d| {
             std.testing.expect(ret.domain_types.contains(d.name)) catch {
                 print("The find variable {s} cannot be found inside the model.\n", .{d.name});
-                std.os.exit(1);
+                std.process.exit(1);
             };
         }
 
@@ -83,22 +83,24 @@ pub const ModelData = struct {
         if (std.mem.eql(u8, string, "DomainFunction")) {
             return .function;
         }
+        if (std.mem.eql(u8, string, "DomainInt")) {
+            return .integer;
+        }
+        std.debug.print("Failed to parse domain type: {s}\n", .{string});
         @panic("Failed to parse domain type!");
     }
 };
 
-pub const DomainType = enum {
-    matrix,
-    function,
-};
+pub const DomainType = enum { matrix, function, integer };
 
 pub const Domain = struct {
     name: []const u8,
     domain: Range,
-    dimensions: []Range,
+    dimensions: ?[]Range,
+    varType: ?[]const u8,
 };
 
-pub const Range = struct { lower: isize, upper: isize };
+pub const Range = struct { lower: ?isize, upper: ?isize, varType: []const u8 };
 
 fn printDomain(d: Domain) void {
     print("{{\n", .{});

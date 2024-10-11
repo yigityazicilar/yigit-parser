@@ -25,36 +25,36 @@ pub fn parseArguments(
         if (streql(arg, "--encodings") or streql(arg, "-e")) {
             ret.encodings_file = args.next() orelse {
                 print("{s}process-nogoods: Error: argument -e/--encodings requires a value\n", .{usageMessage});
-                std.os.exit(1);
+                std.process.exit(1);
             };
         } else if (streql(arg, "--conjure-json") or streql(arg, "-c")) {
             ret.conjure_json_file = args.next() orelse {
                 print("{s}process-nogoods: Error: argument -c/--conjure-json requires a value\n", .{usageMessage});
-                std.os.exit(1);
+                std.process.exit(1);
             };
         } else if (streql(arg, "--learnts") or streql(arg, "-l")) {
             ret.learnts_file = args.next() orelse {
                 print("{s}process-nogoods: Error: argument -l/--learnts requires a value\n", .{usageMessage});
-                std.os.exit(1);
+                std.process.exit(1);
             };
         } else if (streql(arg, "--finds") or streql(arg, "-f")) {
             ret.finds_file = args.next() orelse {
                 print("{s}process-nogoods: Error: argument -f/--finds requires a value\n", .{usageMessage});
-                std.os.exit(1);
+                std.process.exit(1);
             };
         } else if (streql(arg, "--output") or streql(arg, "-o")) {
             ret.output_file = args.next() orelse {
                 print("{s}process-nogoods: Error: argument -o/--output requires a value\n", .{usageMessage});
-                std.os.exit(1);
+                std.process.exit(1);
             };
         } else if (streql(arg, "--bin-output") or streql(arg, "-b")) {
             ret.bin_file = args.next() orelse {
                 print("{s}process-nogoods: Error: argument -b/--bin-output requires a value\n", .{usageMessage});
-                std.os.exit(1);
+                std.process.exit(1);
             };
         } else {
             print("{s}process-nogoods: Error: unknown argument: {s}\n", .{ usageMessage, arg });
-            std.os.exit(1);
+            std.process.exit(1);
         }
     }
 
@@ -80,8 +80,8 @@ pub fn parseArguments(
     }
 
     if (missing_args.items.len > 0) {
-        var errMessage: []const u8 = "process-nogoods: Error: the following arguments are required: ";
-        var missing_args_str = try std.mem.join(
+        const errMessage: []const u8 = "process-nogoods: Error: the following arguments are required: ";
+        const missing_args_str = try std.mem.join(
             allocator,
             ", ",
             missing_args.items,
@@ -89,7 +89,7 @@ pub fn parseArguments(
         defer allocator.free(missing_args_str);
 
         print("{s}{s}{s}\n", .{ usageMessage, errMessage, missing_args_str });
-        std.os.exit(1);
+        std.process.exit(1);
     }
 
     return ret;
